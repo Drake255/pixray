@@ -33,7 +33,17 @@ def xls_to_dict_list(path_to_excel:Path) -> list:
 
     return dict_list
 
-def upscale_img(path_to_img:str, factor=2):
+def upscale_img(path_to_img:str, model="FSRCNN", factor=2):
+    '''
+    Upscale output image with OpenCV.
+    See: https://learnopencv.com/super-resolution-in-opencv/
+    Pretrained models with corresponding factors:
+    EDSR:   x2, x3, x4 (best quality but slower)
+    ESPCN:  x2, x3, x4
+    FSRCNN: x2, x3, x4
+    LapSRN: x2, x4, x8
+
+    '''
     import cv2
     from cv2 import dnn_superres
 
@@ -44,11 +54,11 @@ def upscale_img(path_to_img:str, factor=2):
     image = cv2.imread(path_to_img)
 
     # Read the desired model
-    path = f"./upscale/FSRCNN_x{factor}.pb"
+    path = f"./upscale/{model}_x{factor}.pb"
     sr.readModel(path)
 
     # Set the desired model and scale to get correct pre- and post-processing
-    sr.setModel("fsrcnn", factor)
+    sr.setModel(model.lower(), factor)
 
     # Upscale the image
     result = sr.upsample(image)
@@ -72,8 +82,12 @@ def main(dict_list:list, query_name='Queries', output_dir_root='outputs'):
 
         n_runs = int(run['n_runs'])
         run.pop('n_runs')
-        upscale_factor = int(run['upscale'])
-        run.pop('upscale')
+
+        upscale_factor = int(run['upscale_factor'])
+        run.pop('upscale_factor')
+
+        upscale_model = str(run['upscale_model'])
+        run.pop('upscale_model')
         
         output_name = run['output'] #Backup output name for run counting
 
@@ -81,14 +95,17 @@ def main(dict_list:list, query_name='Queries', output_dir_root='outputs'):
         '''
         prompt = 'cat'
         kwargs_for_run = {
-            'prompts':prompt,     # Multiple simultaneous prompts can be input, with the pipe/vertical bar character "|" as separation between prompts. For each prompt, it is possible to specify weight and when to stop optimizing for a prompt, with syntax like prompt:weight:stop.
-            'quality':'normal',   # draft, normal, better, best (will manage interations and other params).
+            'prompts':prompt,      # Multiple simultaneous prompts can be input, with the pipe/vertical bar character "|" as separation between prompts. For each prompt, it is possible to specify weight and when to stop optimizing for a prompt, with syntax like prompt:weight:stop.
+            'quality':'normal',    # draft, normal, better, best, supreme (will manage interations and other params).
             'iterations':None,
-            'size':[100,100],     # Size specifies the width * height of the image.
-            'drawer':'vqgan',     # vqgan (OK) or pixel (not working).
-            'init_image':None,    # Path or URL of the initial image that is used to jump start the model. (param is not working)
-            'pixel_type':'rect'   # Pixel type can be one of rect, rectshift, tri, diamond, hex, and knit (param is not working)
-            'vqgan_model':        # "imagenet_f16_1024","imagenet_f16_16384","imagenet_f16_16384m","openimages_f16_8192","coco","faceshq","wikiart_1024","wikiart_16384","wikiart_16384m","sflckr"
+            'size':[100,100],      # Size specifies the width * height of the image.
+            'aspect':widescreen    # widescreen (default), square
+            'drawer':'vqgan',      # vqgan (OK) or pixel (not working) - TODO: vdiff to be installed.
+            'init_image':None,     # Path or URL of the initial image that is used to jump start the model. (param is not working)
+            'pixel_type':'rect',   # Pixel type can be one of rect, rectshift, tri, diamond, hex, and knit (param is not working)
+            'vqgan_model':,        # "imagenet_f16_1024","imagenet_f16_16384","imagenet_f16_16384m","openimages_f16_8192","coco","faceshq","wikiart_1024","wikiart_16384","wikiart_16384m","sflckr"
+            'num_cuts':None,       # Reduce VRAM // Specifies the number of "cutouts" that the algorithm feeds into CLIP. A "cutout" is like image augmentation, and allows CLIP to see the image in differing zoom levels, perspectives, and so on. This is much like image augmentation for NN training - the more images, the better the grasp of the model.
+            'batches':1,           # Reduce VRAM // The number of batches specifies how many iterations of accumulation of gradients would be needed before the image is altered one step. Think of it the same as in SGD. It can also be increased in conjunction with reducing num_cuts to reduce VRAM needed for image generation.
         }
         '''
 
@@ -116,8 +133,8 @@ def main(dict_list:list, query_name='Queries', output_dir_root='outputs'):
 
             os.rename(Path(CWD, run['outdir'], 'steps'), Path(CWD, run['outdir'], f'steps_{i}')) # Rename the steps folder for each seed of the same query
 
-            if upscale_factor in [2,3,4]:
-                upscale_img(str(save_path), upscale_factor)
+            if upscale_factor in [2,3,4,8]:
+                upscale_img(str(save_path), model=upscale_model, factor=upscale_factor)
 
 
 
@@ -125,3 +142,4 @@ if __name__ == '__main__':
 
     XLS_NAME = 'Queries.xls'
     main(xls_to_dict_list(Path(CWD, XLS_NAME)), XLS_NAME)
+    print('All queries were completed without errors!')

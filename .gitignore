@@ -29,3 +29,6 @@ com.txt
 
 # venv
 venv/
+
+# Misc
+__backup__/
